@@ -2,59 +2,52 @@ Shader "Custom/Blit"
 {
     Properties
     {
-        _MainTex ("Texture", 2D) = "white" {}
+        _MainTex ("Texture", any) = "" {}
+        _Color("Multiplicative color", Color) = (1.0, 1.0, 1.0, 1.0)
     }
-    SubShader
-    {
-        // No culling or depth
-        Cull Off ZWrite Off ZTest Always
+    SubShader {
+        Pass {
+            ZTest Always Cull Off ZWrite Off
 
-        Pass
-        {
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-
             #include "UnityCG.cginc"
 
-            struct appdata
-            {
+            UNITY_DECLARE_SCREENSPACE_TEXTURE(_MainTex);
+            uniform float4 _MainTex_ST;
+            uniform float4 _Color;
+
+            struct appdata_t {
                 float4 vertex : POSITION;
-                float2 uv : TEXCOORD0;
+                float2 texcoord : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
-            struct v2f
-            {
-                float2 uv : TEXCOORD0;
+            struct v2f {
                 float4 vertex : SV_POSITION;
+                float2 texcoord : TEXCOORD0;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
-            sampler2D _MainTex;
-            float4 _MainTex_TexelSize;
-            
-            v2f vert (appdata v)
+            v2f vert (appdata_t v)
             {
                 v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.vertex = UnityObjectToClipPos(v.vertex);
-                o.uv = v.uv;
-                // #if UNITY_UV_STARTS_AT_TOP
-                // if (_MainTex_TexelSize.y < 0)
-                //     o.uv.y = 1-o.uv.y;
-                // #endif
-                // if (_ProjectionParams.x < 0)
-                //      o.uv.y = 1-o.uv.y;
+                o.texcoord = TRANSFORM_TEX(v.texcoord.xy, _MainTex);
                 return o;
             }
 
-
             fixed4 frag (v2f i) : SV_Target
             {
-                fixed4 col = tex2D(_MainTex, i.uv);
-                // just invert the colors
-                //col.rgb = 1 - col.rgb;
-                return col;
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
+                return UNITY_SAMPLE_SCREENSPACE_TEXTURE(_MainTex, i.texcoord) * _Color;
             }
             ENDCG
+
         }
     }
+    Fallback Off
 }

@@ -59,10 +59,14 @@ public class MyCmdGrabScreenTest : MonoBehaviour
     }
 
     void ValidateRenderTexture() {
-        if (m_RenderTexture && m_RenderTexture.IsCreated()) {
+        if (m_RenderTexture && m_RenderTexture.IsCreated() &&
+            m_RenderTexture.width == Screen.width && m_RenderTexture.height == Screen.height) {
             return;
         }
 
+        if (m_RenderTexture) {
+            m_RenderTexture.Release();
+        }
         var descriptor = new RenderTextureDescriptor(Screen.width, Screen.height, RenderTextureFormat.Default, 0);
         // {
         //     depthBufferBits = 0,
