@@ -13,6 +13,7 @@ Shader "Custom/MyBlit"
             #pragma fragment frag
             #include "UnityCG.cginc"
             #pragma multi_compile _ COND_UNITY_UV_STARTS_AT_TOP
+            #pragma multi_compile _ COND_TEXEL_SIZE_Y
             #pragma multi_compile _ COND_PROJECTION_PARAM_X
 
             UNITY_DECLARE_SCREENSPACE_TEXTURE(_MainTex);
@@ -41,7 +42,9 @@ Shader "Custom/MyBlit"
                 o.texcoord = TRANSFORM_TEX(v.texcoord.xy, _MainTex);
                 #ifdef COND_UNITY_UV_STARTS_AT_TOP
                 #if UNITY_UV_STARTS_AT_TOP
+                #ifdef COND_TEXEL_SIZE_Y
                 if (_MainTex_TexelSize.y < 0)
+                #endif
                     o.texcoord.y = 1.0 - o.texcoord.y;
                 #endif
                 #endif
