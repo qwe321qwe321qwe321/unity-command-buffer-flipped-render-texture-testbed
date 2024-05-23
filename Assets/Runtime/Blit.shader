@@ -1,9 +1,8 @@
-Shader "Custom/Blit"
+Shader "Custom/MyBlit"
 {
     Properties
     {
-        _MainTex ("Texture", any) = "" {}
-        _Color("Multiplicative color", Color) = (1.0, 1.0, 1.0, 1.0)
+        _MainTex ("Texture", 2D) = "white" {}
     }
     SubShader {
         Pass {
@@ -13,9 +12,12 @@ Shader "Custom/Blit"
             #pragma vertex vert
             #pragma fragment frag
             #include "UnityCG.cginc"
+            #pragma multi_compile _ COND_UNITY_UV_STARTS_AT_TOP
+            #pragma multi_compile _ COND_PROJECTION_PARAM_X
 
             UNITY_DECLARE_SCREENSPACE_TEXTURE(_MainTex);
             uniform float4 _MainTex_ST;
+            uniform float4 _MainTex_TexelSize;
             uniform float4 _Color;
 
             struct appdata_t {
@@ -37,13 +39,25 @@ Shader "Custom/Blit"
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.texcoord = TRANSFORM_TEX(v.texcoord.xy, _MainTex);
+                #ifdef COND_UNITY_UV_STARTS_AT_TOP
+                #if UNITY_UV_STARTS_AT_TOP
+                if (_MainTex_TexelSize.y < 0)
+                    o.texcoord.y = 1.0 - o.texcoord.y;
+                #endif
+                #endif
+
+                #ifdef COND_PROJECTION_PARAM_X
+                if (_ProjectionParams.x < 0)
+                    o.texcoord.y = 1.0 - o.texcoord.y;
+                #endif
+                
                 return o;
             }
 
             fixed4 frag (v2f i) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
-                return UNITY_SAMPLE_SCREENSPACE_TEXTURE(_MainTex, i.texcoord) * _Color;
+                return UNITY_SAMPLE_SCREENSPACE_TEXTURE(_MainTex, i.texcoord);
             }
             ENDCG
 

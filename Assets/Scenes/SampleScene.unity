@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 705507994}
-  m_IndirectSpecularColor: {r: 0.44657898, g: 0.4964133, b: 0.5748178, a: 1}
+  m_IndirectSpecularColor: {r: 0.18028378, g: 0.22571412, b: 0.30692285, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -415,12 +415,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   insertCommandBufferEvent: 19
   sourceRenderTextureType: 1
-  useBlitMaterial: 1
   useCustomBlit: 1
+  insertBuiltinBlitForCustomBlit: 0
+  blitShaderUvStartsAtTopKeyword: 0
+  blitShaderProjectionParamX: 0
+  blitFullTriangle: 0
   m_CustomBlitMaterial: {fileID: 2100000, guid: ec2ca9d08331ebc46aa32c0f339f793d, type: 2}
+  m_CustomBlitTriangleMaterial: {fileID: 2100000, guid: 8e8fab143e72bd7458183334fc1f648a, type: 2}
   m_RawImage: {fileID: 1214145099}
   m_RenderTexture: {fileID: 0}
   m_PostProcessLayer: {fileID: 963194231}
+  m_PostProcessVolume: {fileID: 0}
   m_TargetCamera: {fileID: 963194227}
   m_SecondCamera: {fileID: 1675428511}
 --- !u!114 &963194230

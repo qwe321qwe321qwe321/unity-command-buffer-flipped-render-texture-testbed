@@ -2,7 +2,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.PostProcessing;
 using UnityEngine.UI;
@@ -12,13 +11,22 @@ public class MyCmdGrabScreenTest : MonoBehaviour
     public CameraEvent insertCommandBufferEvent = CameraEvent.AfterImageEffects;
     public BuiltinRenderTextureType sourceRenderTextureType = BuiltinRenderTextureType.CurrentActive;
     public bool useCustomBlit = true;
+    public bool insertBuiltinBlitForCustomBlit = false;
+    public bool blitShaderUvStartsAtTopKeyword = false;
+    public bool blitShaderProjectionParamX = false;
+    public bool blitFullTriangle = false;
     [SerializeField] private Material m_CustomBlitMaterial;
+    [SerializeField] private Material m_CustomBlitTriangleMaterial;
     [SerializeField] private RawImage m_RawImage;
     [SerializeField] private RenderTexture m_RenderTexture;
     [SerializeField] private PostProcessLayer m_PostProcessLayer;
+    [SerializeField] private PostProcessVolume m_PostProcessVolume;
 
     [SerializeField] private Camera m_TargetCamera;
     [SerializeField] private Camera m_SecondCamera;
+    
+    private AttachOnRenderImage m_AttachOnRenderImage;
+    private AttachOnPrePostRender m_AttachOnPrePostRender;
     
     private CommandBuffer m_CommandBuffer;
     private CameraEvent m_LastInsertEvent;
@@ -33,9 +41,31 @@ public class MyCmdGrabScreenTest : MonoBehaviour
         }
     }
 
+    private void OnEnable() {
+        if (m_TargetCamera) {
+            if (!m_AttachOnRenderImage) {
+                m_AttachOnRenderImage = m_TargetCamera.gameObject.AddComponent<AttachOnRenderImage>();
+                m_AttachOnRenderImage.enabled = false;
+            }
+            if (!m_AttachOnPrePostRender) {
+                m_AttachOnPrePostRender = m_TargetCamera.gameObject.AddComponent<AttachOnPrePostRender>();
+                m_AttachOnPrePostRender.enabled = false;
+            }
+        }
+        
+    }
+
     private void OnDisable() {
         if (m_LastInsertEvent != default && m_CommandBuffer != null) {
             m_TargetCamera.RemoveCommandBuffer(m_LastInsertEvent, m_CommandBuffer);
+        }
+
+        if (m_AttachOnRenderImage) {
+            m_AttachOnRenderImage.enabled = false;
+        }
+
+        if (m_AttachOnPrePostRender) {
+            m_AttachOnPrePostRender.enabled = false;
         }
     }
 
@@ -50,11 +80,40 @@ public class MyCmdGrabScreenTest : MonoBehaviour
         }
         m_CommandBuffer.Clear();
         var dest = m_RenderTexture;
-        if (useCustomBlit) {
-            m_CommandBuffer.Blit(sourceRenderTextureType, dest, m_CustomBlitMaterial, 0);
+        if (blitFullTriangle) {
+            if (useCustomBlit) {
+                m_CommandBuffer.BlitFullscreenTriangle(sourceRenderTextureType, dest, m_CustomBlitTriangleMaterial, 0);
+            } else {
+                m_CommandBuffer.BlitFullscreenTriangle(sourceRenderTextureType, dest);
+            }
         } else {
-            m_CommandBuffer.Blit(sourceRenderTextureType, dest);
+            if (useCustomBlit) {
+                if (insertBuiltinBlitForCustomBlit) {
+                    m_CommandBuffer.GetTemporaryRT(tempScreenCopyID, GetRtDescriptor());
+                    m_CommandBuffer.Blit(sourceRenderTextureType, tempScreenCopyID);
+                }
+                
+                if (blitShaderUvStartsAtTopKeyword) {
+                    m_CustomBlitMaterial.EnableKeyword("COND_UNITY_UV_STARTS_AT_TOP");
+                } else {
+                    m_CustomBlitMaterial.DisableKeyword("COND_UNITY_UV_STARTS_AT_TOP");
+                }
+                if (blitShaderProjectionParamX) {
+                    m_CustomBlitMaterial.EnableKeyword("COND_PROJECTION_PARAM_X");
+                } else {
+                    m_CustomBlitMaterial.DisableKeyword("COND_PROJECTION_PARAM_X");
+                }
+                if (insertBuiltinBlitForCustomBlit) {
+                    m_CommandBuffer.Blit(tempScreenCopyID, dest, m_CustomBlitMaterial, 0);
+                    m_CommandBuffer.ReleaseTemporaryRT(tempScreenCopyID);
+                } else {
+                    m_CommandBuffer.Blit(sourceRenderTextureType, dest, m_CustomBlitMaterial, 0);
+                }
+            } else {
+                m_CommandBuffer.Blit(sourceRenderTextureType, dest);
+            }
         }
+       
         m_RawImage.texture = dest;
     }
 
@@ -67,6 +126,15 @@ public class MyCmdGrabScreenTest : MonoBehaviour
         if (m_RenderTexture) {
             m_RenderTexture.Release();
         }
+        
+        m_RenderTexture = new RenderTexture(GetRtDescriptor());
+        m_RenderTexture.name = "ScreenRT";
+        m_RenderTexture.Create();
+        
+        Debug.Log($"Create RenderTexture: {m_RenderTexture.name} {m_RenderTexture.width}x{m_RenderTexture.height} {m_RenderTexture.format}");
+    }
+
+    private RenderTextureDescriptor GetRtDescriptor() {
         var descriptor = new RenderTextureDescriptor(Screen.width, Screen.height, RenderTextureFormat.Default, 0);
         // {
         //     depthBufferBits = 0,
@@ -79,13 +147,10 @@ public class MyCmdGrabScreenTest : MonoBehaviour
         //     volumeDepth = 1,
         //     shadowSamplingMode = ShadowSamplingMode.None,
         // };
-        
-        m_RenderTexture = new RenderTexture(descriptor);
-        m_RenderTexture.name = "ScreenRT (descriptor)";
-        m_RenderTexture.Create();
-        
-        Debug.Log($"Create RenderTexture: {m_RenderTexture.name} {m_RenderTexture.width}x{m_RenderTexture.height} {m_RenderTexture.format}");
+        return descriptor;
     }
+    
+    private static readonly int tempScreenCopyID = Shader.PropertyToID("_TempScreenCopy");
 
     private Vector2 m_GuiVerticalScrollPosition;
     private void OnGUI() {
@@ -99,7 +164,11 @@ public class MyCmdGrabScreenTest : MonoBehaviour
             new Rect(0f, 0f, 200f, 2000f)
         );
         Rect rect = new Rect(20, 20f, 300f, PaddingY);
+        GUI.Label(rect, $"OS: {SystemInfo.operatingSystem}");
+        rect.y += PaddingY;
         GUI.Label(rect, $"Graphics: {SystemInfo.graphicsDeviceType}");
+        rect.y += PaddingY;
+        GUI.Label(rect, $"Color Space: {QualitySettings.activeColorSpace}");
         rect.y += PaddingY;
         if (m_RenderTexture) {
             GUI.Label(rect, $"RT Format: {m_RenderTexture.format}");
@@ -108,12 +177,12 @@ public class MyCmdGrabScreenTest : MonoBehaviour
             rect.y += PaddingY;
             GUI.Label(rect, $"depthStencilFormat: {m_RenderTexture.depthStencilFormat}");
             rect.y += PaddingY;
-
         }
         
         EnumToggleGroup(ref rect, PaddingY, ref insertCommandBufferEvent,
             CameraEvent.BeforeForwardOpaque,
             CameraEvent.AfterForwardOpaque,
+            CameraEvent.AfterSkybox,
             CameraEvent.BeforeForwardAlpha,
             CameraEvent.AfterForwardAlpha,
             CameraEvent.BeforeImageEffects,
@@ -126,6 +195,19 @@ public class MyCmdGrabScreenTest : MonoBehaviour
         );
         // Blit Material.
         useCustomBlit = GUI.Toggle(rect, useCustomBlit, "Custom Blit Shader");
+        rect.y += PaddingY;
+
+        if (useCustomBlit && !blitFullTriangle) {
+            insertBuiltinBlitForCustomBlit = GUI.Toggle(rect, insertBuiltinBlitForCustomBlit, "Insert Builtin Blit");
+            rect.y += PaddingY;
+            blitShaderUvStartsAtTopKeyword = GUI.Toggle(rect, blitShaderUvStartsAtTopKeyword, "Condition: UV Starts At Top");
+            rect.y += PaddingY;
+            blitShaderProjectionParamX = GUI.Toggle(rect, blitShaderProjectionParamX, "Condition: Projection Param X");
+            rect.y += PaddingY;
+        }
+        
+        // Blit Full Triangle.
+        blitFullTriangle = GUI.Toggle(rect, blitFullTriangle, "Blit Full Triangle");
         rect.y += PaddingY;
         
         MSAAToggle(ref rect, PaddingY, 0, "No MSAA");
@@ -143,6 +225,14 @@ public class MyCmdGrabScreenTest : MonoBehaviour
         
         // forceIntoRenderTexture.
         m_TargetCamera.forceIntoRenderTexture = GUI.Toggle(rect, m_TargetCamera.forceIntoRenderTexture, "forceIntoRenderTexture");
+        rect.y += PaddingY;
+
+        // AttachOnRenderImage.
+        m_AttachOnRenderImage.enabled = GUI.Toggle(rect, m_AttachOnRenderImage.enabled, "Use OnRenderImage");
+        rect.y += PaddingY;
+        
+        // AttachOnPrePostRender.
+        m_AttachOnPrePostRender.enabled = GUI.Toggle(rect, m_AttachOnPrePostRender.enabled, "Use OnPreRender & OnPostRender");
         rect.y += PaddingY;
         
         // Second Camera.
@@ -202,4 +292,32 @@ public class MyCmdGrabScreenTest : MonoBehaviour
         }
         rect.y += paddingY;
     }
+}
+
+public static class CommandBufferExtensions {
+    /// <summary>
+    /// Does a copy of source to destination using a fullscreen triangle.
+    /// </summary>
+    /// <param name="cmd">The command buffer to use</param>
+    /// <param name="source">The source render target</param>
+    /// <param name="destination">The destination render target</param>
+    /// <param name="clear">Should the destination target be cleared?</param>
+    /// <param name="viewport">An optional viewport to consider for the blit</param>
+    /// <param name="preserveDepth">Should the depth buffer be preserved?</param>
+    public static void BlitFullscreenTriangle(this CommandBuffer cmd, RenderTargetIdentifier source, RenderTargetIdentifier destination, Material blitMaterial, int pass, bool clear = false, Rect? viewport = null, bool preserveDepth = false)
+    {
+        cmd.SetGlobalTexture(ShaderIDs_MainTex, source);
+        var colorLoad = viewport == null ? RenderBufferLoadAction.DontCare : RenderBufferLoadAction.Load;
+        cmd.SetRenderTargetWithLoadStoreAction(destination, colorLoad, RenderBufferStoreAction.Store, preserveDepth ? RenderBufferLoadAction.Load : colorLoad, RenderBufferStoreAction.Store);
+
+        if (viewport != null)
+            cmd.SetViewport(viewport.Value);
+
+        if (clear)
+            cmd.ClearRenderTarget(true, true, Color.clear);
+
+        cmd.DrawMesh(RuntimeUtilities.fullscreenTriangle, Matrix4x4.identity, blitMaterial, 0, pass);
+    }
+    
+    internal static readonly int ShaderIDs_MainTex = Shader.PropertyToID("_MainTex");
 }
